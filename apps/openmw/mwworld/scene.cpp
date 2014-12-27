@@ -20,8 +20,7 @@
 
 namespace
 {
-    void updateObjectLocalRotation (const MWWorld::Ptr& ptr, MWWorld::PhysicsSystem& physics,
-                                    MWRender::RenderingManager& rendering)
+    void updateObjectLocalRotation (const MWWorld::Ptr& ptr, MWWorld::PhysicsSystem& physics)
     {
         if (ptr.getRefData().getBaseNode() != NULL)
         {
@@ -41,6 +40,29 @@ namespace
 
             ptr.getRefData().getBaseNode()->setOrientation(worldRotQuat*rot);
             physics.rotateObject(ptr);
+        }
+    }
+
+    void adjustObject(std::list<MWWorld::Ptr>& new_refs, MWWorld::PhysicsSystem& physics)
+    {
+        for (std::list<MWWorld::Ptr>::iterator ptr = new_refs.begin(); ptr != new_refs.end(); ++ptr)
+        {
+			try
+			{
+				if (ptr->getRefData().getCount() && ptr->getRefData().isEnabled())
+				{
+					ptr->getClass().insertObject (*ptr, physics);
+
+					updateObjectLocalRotation(*ptr, physics);
+					if (ptr->getCellRef().getScale() != 1.0f) MWBase::Environment::get().getWorld()->scaleObject (*ptr, ptr->getCellRef().getScale());
+					ptr->getClass().adjustPosition (*ptr, false);
+				}
+			}
+			catch (const std::exception& e)
+			{
+				std::string error ("error during rendering: ");
+				std::cerr << error + e.what() << std::endl;
+			}
         }
     }
 
@@ -80,11 +102,6 @@ namespace
             try
             {
                 mRendering.addObject (ptr);
-                ptr.getClass().insertObject (ptr, mPhysics);
-
-                updateObjectLocalRotation(ptr, mPhysics, mRendering);
-                MWBase::Environment::get().getWorld()->scaleObject (ptr, ptr.getCellRef().getScale());
-                ptr.getClass().adjustPosition (ptr, false);
             }
             catch (const std::exception& e)
             {
@@ -93,7 +110,7 @@ namespace
             }
         }
 
-        mLoadingListener.increaseProgress (1);
+        //mLoadingListener.increaseProgress (1);
 
         return true;
     }
@@ -105,7 +122,7 @@ namespace MWWorld
 
     void Scene::updateObjectLocalRotation (const Ptr& ptr)
     {
-        ::updateObjectLocalRotation(ptr, *mPhysics, mRendering);
+        ::updateObjectLocalRotation(ptr, *mPhysics);
     }
 
     void Scene::updateObjectRotation (const Ptr& ptr)
@@ -117,7 +134,20 @@ namespace MWWorld
         }
     }
 
-    void Scene::update (float duration, bool paused)
+    void Scene::loadCellsThread()
+    {
+        Loading::Listener* loadingListener = MWBase::Environment::get().getWindowManager()->getLoadingScreen();
+
+        // go through all cells to load
+        for (CellStoreCollection::iterator it = mCellsLoading.begin(); it != mCellsLoading.end();)
+        {
+            insertCell(*(*it), true, loadingListener);
+            mCellsLoad.insert(*it);
+            it = mCellsLoading.erase(it);
+        }
+    }
+
+    void Scene::update (float duration, const ESM::Position& position, bool paused)
     {
         if (mNeedMapUpdate)
         {
@@ -129,6 +159,97 @@ namespace MWWorld
         }
 
         mRendering.update (duration, paused);
+
+        // load cells in background
+
+        CellStore *curCell = getCurrentCell();
+
+        if (!curCell->getCell()->isExterior()) return;
+
+        // update cell loading threads states
+		// there can be only 1 background cell loading thread (to ensure thread-safeness)
+        if (isCellLoading()) return;
+
+        // load on <= distLoad units to cell border
+        // unload on > distUnload units of cell border
+        static const float distLoad = 1000, distUnload = 1500;
+
+        int curX = curCell->getCell()->getGridX();
+        int curY = curCell->getCell()->getGridY();
+
+        std::cerr<<"thread current:"<<curX<<","<<curY<<std::endl;
+
+        int cellOffsetX = 0, cellOffsetY = 0;
+
+        // check if we closer to left or right border
+        if(position.pos[0] - curX * ESM::Land::REAL_SIZE <= distLoad) cellOffsetX = -2;
+        else if((curX+1) * ESM::Land::REAL_SIZE - position.pos[0] <= distLoad) cellOffsetX = 2;
+
+        // check if we closer to top or bottom border
+        if(position.pos[1] - curY * ESM::Land::REAL_SIZE <= distLoad) cellOffsetY = -2;
+        else if((curY+1) * ESM::Land::REAL_SIZE - position.pos[1] <= distLoad) cellOffsetY = 2;
+
+        Loading::Listener* loadingListener = MWBase::Environment::get().getWindowManager()->getLoadingScreen();
+        Loading::ScopedLoad load(loadingListener);
+
+        std::string loadingExteriorText = "#{sLoadingMessage3}";
+        loadingListener->setLabel(loadingExteriorText);
+
+        loadingListener->setProgressRange(1000);
+
+        // check if need to load 3 cells only for 1 side: top bottom left right
+        if((cellOffsetX != 0 && cellOffsetY == 0) || (cellOffsetX == 0 && cellOffsetY != 0))
+        {
+            /* Example for cellOffsetY < 0 (|x| - cells to load)
+                _ _ _
+               |x|x|x|
+               |_|_|_|
+               |_|_|_|
+               |_|_|_|*/
+            CellStore *cell;
+            for (int i = -1; i <= -1; i++)
+            {
+                int cellX = (cellOffsetX != 0 ? curX + cellOffsetX : curX + i);
+                int cellY = (cellOffsetY != 0 ? curY + cellOffsetY : curY + i);
+
+                cell = MWBase::Environment::get().getWorld()->getExterior(cellX, cellY);
+                if (!isCellActive(*cell) && !isCellLoaded(*cell))
+                {
+                    mCellsLoading.insert(cell);
+                    std::cerr<<"thread load 3:"<<cellX<<","<<cellY<<std::endl;
+					return;
+                }
+            }
+        }
+
+        // moving at diagonal cell
+        if(cellOffsetX != 0 && cellOffsetY != 0)
+        {
+            /* Example for cellOffsetX < 0 && cellOffsetY <0 (|x| - cells to load)
+              _ _ _
+             |x|x|x|_
+             |x|_|_|_|
+             |x|_|_|_|
+               |_|_|_|*/
+            CellStore *cell;
+
+            int cellX, cellY = curY + cellOffsetY;
+            for (int i = 0; i < 5; i++)
+            {
+                if(i < 3) cellX = curX + (cellOffsetX < 0 ? -i : i); // first 3 cells
+                else cellY = curY + (cellOffsetY < 0 ? i-2 : -i+2); // last 2
+
+                cell = MWBase::Environment::get().getWorld()->getExterior(cellX, cellY);
+                if (!isCellActive(*cell) && !isCellLoaded(*cell))
+                {
+                    mCellsLoading.insert(cell);
+                    std::cerr<<"thread load 5:"<<cellX<<","<<cellY<<std::endl;
+					return;
+                }
+            }
+        }
+
+        if (!mCellsLoading.empty()) mCellsLoadThread = new boost::thread(boost::bind(&Scene::loadCellsThread, this));
     }
 
     void Scene::unloadCell (CellStoreCollection::iterator iter)
@@ -168,7 +289,7 @@ namespace MWWorld
         mActiveCells.erase(*iter);
     }
 
-    void Scene::loadCell (CellStore *cell, Loading::Listener* loadingListener)
+    void Scene::loadCell(CellStore *cell, Loading::Listener* loadingListener, bool loadRefs)
     {
         std::pair<CellStoreCollection::iterator, bool> result = mActiveCells.insert(cell);
 
@@ -201,15 +322,27 @@ namespace MWWorld
 
             // ... then references. This is important for adjustPosition to work correctly.
             /// \todo rescale depending on the state of a new GMST
-            insertCell (*cell, true, loadingListener);
+            if (loadRefs) 
+            {
+                // only load objects/actors data from hard drive here
+                insertCell (*cell, true, loadingListener);
 
-            mRendering.cellAdded (cell);
+                // initialize objects for rendering
+                std::list<MWWorld::Ptr> new_refs;
+                mRendering.initObjects(new_refs);
+                adjustObject(new_refs, *mPhysics);
 
-            mRendering.configureAmbient(*cell);
+                cellAdded(cell);
+            }
         }
+    }
+
+    void Scene::cellAdded(CellStore *cell)
+    {
+        mRendering.cellAdded (cell);
+        mRendering.configureAmbient(*cell);
 
         // register local scripts
-        // ??? Should this go into the above if block ???
         MWBase::Environment::get().getWorld()->getLocalScripts().addCell (cell);
     }
 
@@ -266,6 +399,30 @@ namespace MWWorld
 
         std::string loadingExteriorText = "#{sLoadingMessage3}";
         loadingListener->setLabel(loadingExteriorText);
+
+        // wait until background cells loading complete
+        if (isCellLoading()) 
+        {
+            mCellsLoadThread->join();
+            delete mCellsLoadThread;
+            mCellsLoadThread = NULL;
+        }
+
+        for (CellStoreCollection::iterator it = mCellsLoad.begin(); it != mCellsLoad.end(); ++it)
+        {
+            loadCell(*it, loadingListener, false); // refs were loaded in background
+        }
+
+        std::list<MWWorld::Ptr> new_refs;
+        mRendering.initObjects(new_refs);
+        adjustObject(new_refs, *mPhysics);
+
+        for (CellStoreCollection::iterator it = mCellsLoad.begin(); it != mCellsLoad.end(); ++it)
+        {
+            cellAdded(*it);
+        }
+
+        mCellsLoad.clear();
 
         CellStoreCollection::iterator active = mActiveCells.begin();
 
@@ -330,7 +487,7 @@ namespace MWWorld
                 {
                     CellStore *cell = MWBase::Environment::get().getWorld()->getExterior(x, y);
 
-                    loadCell (cell, loadingListener);
+                    loadCell (cell, loadingListener, true);
                 }
             }
 
@@ -363,7 +520,7 @@ namespace MWWorld
 
     //We need the ogre renderer and a scene node.
     Scene::Scene (MWRender::RenderingManager& rendering, PhysicsSystem *physics)
-    : mCurrentCell (0), mCellChanged (false), mPhysics(physics), mRendering(rendering), mNeedMapUpdate(false)
+    : mCurrentCell (0), mCellChanged (false), mPhysics(physics), mRendering(rendering), mNeedMapUpdate(false), mCellsLoadThread(NULL)
     {
     }
 
@@ -434,7 +591,7 @@ namespace MWWorld
 
         //Loading Interior loading text
 
-        loadCell (cell, loadingListener);
+        loadCell (cell, loadingListener, true);
 
         mCurrentCell = cell;
 
@@ -503,6 +660,40 @@ namespace MWWorld
             ++active;
         }
         return false;
+    }
+
+	bool Scene::isCellLoaded(const CellStore &cell)
+	{
+		CellStoreCollection::iterator active = mCellsLoad.begin();
+        while (active != mCellsLoad.end()) {
+            if (**active == cell) {
+                return true;
+            }
+            ++active;
+        }
+        return false;
+	}
+
+    bool Scene::isCellLoading()
+    {
+        return mCellsLoadThread != NULL;
+    }
+
+    bool Scene::checkCellsLoaded()
+    {
+        // if thread has finished working then delete it from list
+        if (mCellsLoadThread != NULL) 
+        {
+            if(!mCellsLoadThread->timed_join(boost::posix_time::milliseconds(0))) 
+            {
+                delete mCellsLoadThread;
+                mCellsLoadThread = NULL;
+                return true;
+            }
+            else return false;
+        }
+
+        return true;
     }
 
     Ptr Scene::searchPtrViaHandle (const std::string& handle)

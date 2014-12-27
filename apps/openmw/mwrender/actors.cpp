@@ -36,14 +36,15 @@ void Actors::setRootNode(Ogre::SceneNode* root)
 void Actors::insertBegin(const MWWorld::Ptr &ptr)
 {
     Ogre::SceneNode* cellnode;
-    CellSceneNodeMap::const_iterator celliter = mCellSceneNodes.find(ptr.getCell());
-    if(celliter != mCellSceneNodes.end())
+    CellSceneNodeMap::const_iterator celliter = mCellSceneNodesLoad.find(ptr.getCell());
+    if(celliter != mCellSceneNodesLoad.end())
         cellnode = celliter->second;
     else
     {
         //Create the scenenode and put it in the map
-        cellnode = mRootNode->createChildSceneNode();
-        mCellSceneNodes[ptr.getCell()] = cellnode;
+        //cellnode = mRootNode->createChildSceneNode(); mRootNode->addChild(cellnode);
+        cellnode = new SceneNode(mRootNode->getCreator());
+        mCellSceneNodesLoad[ptr.getCell()] = cellnode;
     }
 
     Ogre::SceneNode* insert = cellnode->createChildSceneNode();
@@ -67,9 +68,7 @@ void Actors::insertNPC(const MWWorld::Ptr& ptr)
 {
     insertBegin(ptr);
     NpcAnimation* anim = new NpcAnimation(ptr, ptr.getRefData().getBaseNode(), RV_Actors);
-    delete mAllActors[ptr];
-    mAllActors[ptr] = anim;
-    mRendering->addWaterRippleEmitter (ptr);
+    mAllActorsLoad[ptr] = anim;
 }
 void Actors::insertCreature (const MWWorld::Ptr& ptr, bool weaponsShields)
 {
@@ -79,16 +78,49 @@ void Actors::insertCreature (const MWWorld::Ptr& ptr, bool weaponsShields)
         anim = new CreatureWeaponAnimation(ptr);
     else
         anim = new CreatureAnimation(ptr);
-    delete mAllActors[ptr];
-    mAllActors[ptr] = anim;
-    mRendering->addWaterRippleEmitter (ptr);
+    mAllActorsLoad[ptr] = anim;
+}
+void Actors::initActors(std::list<MWWorld::Ptr>& new_objects)
+{
+    for (PtrAnimationMap::iterator iter = mAllActorsLoad.begin(); iter != mAllActorsLoad.end(); ++iter)
+    {
+        delete mAllActors[iter->first];
+        mAllActors[iter->first] = iter->second;
+        mRendering->addWaterRippleEmitter (iter->first);
+        new_objects.push_back(iter->first);
+    }
+
+    mAllActorsLoad.clear();
+
+    for (CellSceneNodeMap::iterator iter = mCellSceneNodesLoad.begin(); iter != mCellSceneNodesLoad.end(); ++iter)
+    {
+        CellSceneNodeMap::iterator cellnode = mCellSceneNodes.find(iter->first);
+
+        if (cellnode == mCellSceneNodes.end())
+        {
+            mCellSceneNodes[iter->first] = iter->second;
+        }
+        else
+        {
+            Ogre::SceneNode* cellnodeLoad = iter->second;
+            Ogre::Node::ChildNodeIterator children = cellnodeLoad->getChildIterator();
+            while(children.hasMoreElements())
+            {
+                Ogre::Node *child = children.getNext();
+                cellnodeLoad->removeChild(child);
+                cellnode->second->addChild(child);
+            }
+        }
+    }
+
+    mCellSceneNodesLoad.clear();
 }
 void Actors::insertActivator (const MWWorld::Ptr& ptr)
 {
     insertBegin(ptr);
     ActivatorAnimation* anim = new ActivatorAnimation(ptr);
-    delete mAllActors[ptr];
-    mAllActors[ptr] = anim;
+    delete mAllActorsLoad[ptr];
+    mAllActorsLoad[ptr] = anim;
 }
 
 bool Actors::deleteObject (const MWWorld::Ptr& ptr)

@@ -53,7 +53,8 @@ namespace MWWorld
 
             //OEngine::Render::OgreRenderer& mRenderer;
             CellStore* mCurrentCell; // the cell the player is in
-            CellStoreCollection mActiveCells;
+            CellStoreCollection mActiveCells, mCellsLoad, mCellsLoading;
+            boost::thread *mCellsLoadThread;
             bool mCellChanged;
             PhysicsSystem *mPhysics;
             MWRender::RenderingManager& mRendering;
@@ -73,7 +74,11 @@ namespace MWWorld
 
             void unloadCell (CellStoreCollection::iterator iter);
 
-            void loadCell (CellStore *cell, Loading::Listener* loadingListener);
+            void loadCell (CellStore *cell, Loading::Listener* loadingListener, bool loadRefs);
+
+            void cellAdded(CellStore *cell);
+
+            void loadCellsThread();
 
             void changeCell (int X, int Y, const ESM::Position& position, bool adjustPlayerPos);
 
@@ -95,7 +100,7 @@ namespace MWWorld
 
             void markCellAsUnchanged();
 
-            void update (float duration, bool paused);
+            void update (float duration, const ESM::Position& position, bool paused);
 
             void addObjectToScene (const Ptr& ptr);
             ///< Add an object that already exists in the world model to the scene.
@@ -108,6 +113,13 @@ namespace MWWorld
             void updateObjectRotation (const Ptr& ptr);
 
             bool isCellActive(const CellStore &cell);
+
+			bool isCellLoaded(const CellStore &cell);
+
+            bool isCellLoading();
+            ///< Cell is currently being loaded in background thread
+
+            bool checkCellsLoaded();
 
             Ptr searchPtrViaHandle (const std::string& handle);
 

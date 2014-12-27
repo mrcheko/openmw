@@ -1448,7 +1448,7 @@ namespace MWWorld
         if (!paused)
             doPhysics (duration);
 
-        mWorldScene->update (duration, paused);
+        mWorldScene->update (duration, mPlayer->getPlayer().getRefData().getPosition(), paused);
 
         performUpdateSceneQueries ();
 

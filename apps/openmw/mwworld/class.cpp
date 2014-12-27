@@ -42,6 +42,11 @@ namespace MWWorld
 
     }
 
+    void Class::initObjectRendering (const Ptr& ptr, MWRender::RenderingInterface& renderingInterface) const
+    {
+
+    }
+
     void Class::insertObject(const Ptr& ptr, MWWorld::PhysicsSystem& physics) const
     {
 

@@ -208,9 +208,9 @@ endif()
 find_package(OGRE REQUIRED)
 
 find_package(MyGUI REQUIRED)
-if (${MYGUI_VERSION} VERSION_LESS "3.2.1")
-    message(FATAL_ERROR "OpenMW requires MyGUI 3.2.1 or later, please install the latest version from http://mygui.info")
-endif()
+#if (${MYGUI_VERSION} VERSION_LESS "3.2.1")
+ #   message(FATAL_ERROR "OpenMW requires MyGUI 3.2.1 or later, please install the latest version from http://mygui.info")
+#endif()
 
 find_package(Boost REQUIRED COMPONENTS ${BOOST_COMPONENTS})
 find_package(SDL2 REQUIRED)

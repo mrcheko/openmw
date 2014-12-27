@@ -261,6 +261,12 @@ void RenderingManager::removeObject (const MWWorld::Ptr& ptr)
         mActors->deleteObject (ptr);
 }
 
+void RenderingManager::initObjects (std::list<MWWorld::Ptr>& new_objects)
+{
+    mObjects->initObjects(new_objects);
+    mActors->initActors(new_objects);
+}
+
 void RenderingManager::moveObject (const MWWorld::Ptr& ptr, const Ogre::Vector3& position)
 {
     /// \todo move this to the rendering-subsystems

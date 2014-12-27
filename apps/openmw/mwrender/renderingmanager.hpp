@@ -115,6 +115,8 @@ public:
 
     void addObject (const MWWorld::Ptr& ptr);
     void removeObject (const MWWorld::Ptr& ptr);
+    /// Init loaded previously from hard drive objects for render
+    void initObjects (std::list<MWWorld::Ptr>& new_objects);
 
     void moveObject (const MWWorld::Ptr& ptr, const Ogre::Vector3& position);
     void scaleObject (const MWWorld::Ptr& ptr, const Ogre::Vector3& scale);

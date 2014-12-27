@@ -83,6 +83,7 @@ namespace MWWorld
             /// (default implementation: throw an exception)
 
             virtual void insertObjectRendering (const Ptr& ptr, MWRender::RenderingInterface& renderingInterface) const;
+            virtual void initObjectRendering(const Ptr& ptr, MWRender::RenderingInterface& renderingInterface) const;
             virtual void insertObject(const Ptr& ptr, MWWorld::PhysicsSystem& physics) const;
             ///< Add reference into a cell for rendering (default implementation: don't render anything).
 

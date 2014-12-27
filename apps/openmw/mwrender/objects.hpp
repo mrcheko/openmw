@@ -18,14 +18,17 @@ class ObjectAnimation;
 
 class Objects{
     typedef std::map<MWWorld::Ptr,ObjectAnimation*> PtrAnimationMap;
+    typedef std::map<MWWorld::CellStore*,Ogre::SceneNode*> CellSceneNodeMap;
 
     OEngine::Render::OgreRenderer &mRenderer;
 
-    std::map<MWWorld::CellStore*,Ogre::SceneNode*> mCellSceneNodes;
+    CellSceneNodeMap mCellSceneNodes;
+    CellSceneNodeMap mCellSceneNodesLoad;
+    PtrAnimationMap mObjects;
+    PtrAnimationMap mObjectsLoad;
     std::map<MWWorld::CellStore*,Ogre::StaticGeometry*> mStaticGeometry;
     std::map<MWWorld::CellStore*,Ogre::StaticGeometry*> mStaticGeometrySmall;
     std::map<MWWorld::CellStore*,Ogre::AxisAlignedBox> mBounds;
-    PtrAnimationMap mObjects;
 
     Ogre::SceneNode* mRootNode;
 
@@ -42,6 +45,7 @@ public:
     {}
     ~Objects(){}
     void insertModel(const MWWorld::Ptr& ptr, const std::string &model, bool batch=false, bool addLight=false);
+    void initObjects(std::list<MWWorld::Ptr>& new_objects);
 
     ObjectAnimation* getAnimation(const MWWorld::Ptr &ptr);
 

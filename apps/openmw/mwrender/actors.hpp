@@ -25,7 +25,9 @@ namespace MWRender
         Ogre::SceneNode* mRootNode;
 
         CellSceneNodeMap mCellSceneNodes;
+        CellSceneNodeMap mCellSceneNodesLoad;
         PtrAnimationMap mAllActors;
+        PtrAnimationMap mAllActorsLoad;
 
         void insertBegin(const MWWorld::Ptr &ptr);
 
@@ -41,6 +43,7 @@ namespace MWRender
 
         void insertNPC(const MWWorld::Ptr& ptr);
         void insertCreature (const MWWorld::Ptr& ptr, bool weaponsShields);
+        void initActors(std::list<MWWorld::Ptr>& new_objects);
         void insertActivator (const MWWorld::Ptr& ptr);
          bool deleteObject (const MWWorld::Ptr& ptr);
         ///< \return found?

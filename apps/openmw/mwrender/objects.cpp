@@ -35,17 +35,16 @@ void Objects::setRootNode(Ogre::SceneNode* root)
 
 void Objects::insertBegin(const MWWorld::Ptr& ptr)
 {
-    Ogre::SceneNode* root = mRootNode;
     Ogre::SceneNode* cellnode;
-    if(mCellSceneNodes.find(ptr.getCell()) == mCellSceneNodes.end())
+    if(mCellSceneNodesLoad.find(ptr.getCell()) == mCellSceneNodesLoad.end())
     {
         //Create the scenenode and put it in the map
-        cellnode = root->createChildSceneNode();
-        mCellSceneNodes[ptr.getCell()] = cellnode;
+        cellnode = new Ogre::SceneNode(mRootNode->getCreator());
+        mCellSceneNodesLoad[ptr.getCell()] = cellnode;
     }
     else
     {
-        cellnode = mCellSceneNodes[ptr.getCell()];
+        cellnode = mCellSceneNodesLoad[ptr.getCell()];
     }
 
     Ogre::SceneNode* insert = cellnode->createChildSceneNode();
@@ -163,7 +162,43 @@ void Objects::insertModel(const MWWorld::Ptr &ptr, const std::string &mesh, bool
     }
 
     if(anim.get() != NULL)
-        mObjects.insert(std::make_pair(ptr, anim.release()));
+        mObjectsLoad.insert(std::make_pair(ptr, anim.release()));
+}
+
+void Objects::initObjects(std::list<MWWorld::Ptr>& new_objects)
+{
+    for (PtrAnimationMap::iterator iter = mObjectsLoad.begin(); iter != mObjectsLoad.end(); ++iter)
+    {
+		if (iter->second == NULL) continue;
+
+		mObjects.insert(*iter);
+        new_objects.push_back(iter->first);
+    }
+
+    mObjectsLoad.clear();
+
+    for (CellSceneNodeMap::iterator iter = mCellSceneNodesLoad.begin(); iter != mCellSceneNodesLoad.end(); ++iter)
+    {
+        CellSceneNodeMap::iterator cellnode = mCellSceneNodes.find(iter->first);
+
+        if (cellnode == mCellSceneNodes.end())
+        {
+            mCellSceneNodes[iter->first] = iter->second;
+        }
+        else
+        {
+            Ogre::SceneNode* cellnodeLoad = iter->second;
+            Ogre::Node::ChildNodeIterator children = cellnodeLoad->getChildIterator();
+            while(children.hasMoreElements())
+            {
+                Ogre::Node *child = children.getNext();
+                cellnodeLoad->removeChild(child);
+                cellnode->second->addChild(child);
+            }
+        }
+    }
+
+    mCellSceneNodesLoad.clear();
 }
 
 bool Objects::deleteObject (const MWWorld::Ptr& ptr)
